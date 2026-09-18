@@ -9,7 +9,10 @@
 ## 現状の対応
 - Dockerのインストールは環境変更にあたるため、Claudeでは実施せずユーザー自身が対応する方針とした
 - 先にAPIプロジェクト(Minimal API, TODO CRUD)とDockerfileを用意し、`dotnet run` でのローカル起動とCRUD動作は確認済み
-- Dockerインストール後にDockerfileのビルド・起動確認を行う(未実施)
+- ユーザーがDocker Desktopをインストール後、`docker build` / `docker run` でコンテナ起動・CRUD動作を確認済み(Docker 29.8.0)
+
+## 解決
+Docker Desktopを再インストールしてもらい解消。`~/.docker` に古い設定(2024年頃)だけが残っていたが、アプリ本体は入っていなかった状態だったと思われる。
 
 ## TODO
-- [ ] Docker Desktopインストール後、`docker build` / `docker run` でコンテナ起動を確認する
+- [x] Docker Desktopインストール後、`docker build` / `docker run` でコンテナ起動を確認する
