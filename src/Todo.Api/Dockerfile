@@ -9,7 +9,9 @@ RUN dotnet publish -c Release -o /app --no-restore
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
-COPY --from=build /app .
+RUN useradd --no-create-home --shell /usr/sbin/nologin appuser
+COPY --from=build --chown=appuser:appuser /app .
+USER appuser
 
 ENV ASPNETCORE_URLS=http://+:8080
 EXPOSE 8080
