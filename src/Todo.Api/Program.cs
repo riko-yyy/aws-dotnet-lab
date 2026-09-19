@@ -1,9 +1,24 @@
+using Microsoft.EntityFrameworkCore;
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddOpenApi();
-builder.Services.AddSingleton<ITodoStore, InMemoryTodoStore>();
+
+var connectionString =
+    $"Host={builder.Configuration["Db:Host"]};" +
+    $"Port={builder.Configuration["Db:Port"] ?? "5432"};" +
+    $"Database={builder.Configuration["Db:Name"]};" +
+    $"Username={builder.Configuration["Db:Username"]};" +
+    $"Password={builder.Configuration["Db:Password"]}";
+
+builder.Services.AddDbContext<TodoDbContext>(options => options.UseNpgsql(connectionString));
 
 var app = builder.Build();
+
+using (var scope = app.Services.CreateScope())
+{
+    scope.ServiceProvider.GetRequiredService<TodoDbContext>().Database.Migrate();
+}
 
 if (app.Environment.IsDevelopment())
 {
@@ -12,66 +27,61 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
-app.MapGet("/todos", (ITodoStore store) => store.GetAll());
+app.MapGet("/todos", async (TodoDbContext db) =>
+    await db.Todos.AsNoTracking().ToListAsync());
 
-app.MapGet("/todos/{id:guid}", (Guid id, ITodoStore store) =>
-    store.Get(id) is { } todo ? Results.Ok(todo) : Results.NotFound());
+app.MapGet("/todos/{id:guid}", async (Guid id, TodoDbContext db) =>
+    await db.Todos.FindAsync(id) is { } todo ? Results.Ok(todo) : Results.NotFound());
 
-app.MapPost("/todos", (CreateTodoRequest request, ITodoStore store) =>
+app.MapPost("/todos", async (CreateTodoRequest request, TodoDbContext db) =>
 {
-    var todo = store.Add(request.Title);
+    var todo = new TodoItem { Id = Guid.NewGuid(), Title = request.Title, Done = false };
+    db.Todos.Add(todo);
+    await db.SaveChangesAsync();
     return Results.Created($"/todos/{todo.Id}", todo);
 });
 
-app.MapPut("/todos/{id:guid}", (Guid id, UpdateTodoRequest request, ITodoStore store) =>
-    store.Update(id, request.Title, request.Done) is { } todo ? Results.Ok(todo) : Results.NotFound());
+app.MapPut("/todos/{id:guid}", async (Guid id, UpdateTodoRequest request, TodoDbContext db) =>
+{
+    var todo = await db.Todos.FindAsync(id);
+    if (todo is null)
+    {
+        return Results.NotFound();
+    }
 
-app.MapDelete("/todos/{id:guid}", (Guid id, ITodoStore store) =>
-    store.Delete(id) ? Results.NoContent() : Results.NotFound());
+    todo.Title = request.Title;
+    todo.Done = request.Done;
+    await db.SaveChangesAsync();
+    return Results.Ok(todo);
+});
+
+app.MapDelete("/todos/{id:guid}", async (Guid id, TodoDbContext db) =>
+{
+    var todo = await db.Todos.FindAsync(id);
+    if (todo is null)
+    {
+        return Results.NotFound();
+    }
+
+    db.Todos.Remove(todo);
+    await db.SaveChangesAsync();
+    return Results.NoContent();
+});
 
 app.Run();
 
-record TodoItem(Guid Id, string Title, bool Done);
+public class TodoItem
+{
+    public Guid Id { get; set; }
+    public string Title { get; set; } = string.Empty;
+    public bool Done { get; set; }
+}
 
 record CreateTodoRequest(string Title);
 
 record UpdateTodoRequest(string Title, bool Done);
 
-interface ITodoStore
+class TodoDbContext(DbContextOptions<TodoDbContext> options) : DbContext(options)
 {
-    IEnumerable<TodoItem> GetAll();
-    TodoItem? Get(Guid id);
-    TodoItem Add(string title);
-    TodoItem? Update(Guid id, string title, bool done);
-    bool Delete(Guid id);
-}
-
-class InMemoryTodoStore : ITodoStore
-{
-    private readonly Dictionary<Guid, TodoItem> _items = new();
-
-    public IEnumerable<TodoItem> GetAll() => _items.Values;
-
-    public TodoItem? Get(Guid id) => _items.GetValueOrDefault(id);
-
-    public TodoItem Add(string title)
-    {
-        var todo = new TodoItem(Guid.NewGuid(), title, Done: false);
-        _items[todo.Id] = todo;
-        return todo;
-    }
-
-    public TodoItem? Update(Guid id, string title, bool done)
-    {
-        if (!_items.ContainsKey(id))
-        {
-            return null;
-        }
-
-        var todo = new TodoItem(id, title, done);
-        _items[id] = todo;
-        return todo;
-    }
-
-    public bool Delete(Guid id) => _items.Remove(id);
+    public DbSet<TodoItem> Todos => Set<TodoItem>();
 }
