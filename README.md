@@ -9,7 +9,7 @@
 
 ## 進捗
 - [x] 1. ローカルでDocker化した.NET Core APIを動かす([PR #1](https://github.com/riko-yyy/aws-dotnet-lab/pull/1))
-- [ ] 2. ECS Fargateへのデプロイ
+- [x] 2. ECS Fargateへのデプロイ(`feature/stage2-ecs-fargate`)
 - [ ] 3. RDSと接続したCRUD実装
 - [ ] 4. Terraformによるインフラのコード化
 - [ ] 5. GitHub Actionsによる自動デプロイ
