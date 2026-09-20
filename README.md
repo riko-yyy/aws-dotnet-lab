@@ -10,11 +10,19 @@
 ## 進捗
 - [x] 1. ローカルでDocker化した.NET Core APIを動かす([PR #1](https://github.com/riko-yyy/aws-dotnet-lab/pull/1))
 - [x] 2. ECS Fargateへのデプロイ([PR #2](https://github.com/riko-yyy/aws-dotnet-lab/pull/2))
-- [x] 3. RDSと接続したCRUD実装
+- [x] 3. RDSと接続したCRUD実装([PR #4](https://github.com/riko-yyy/aws-dotnet-lab/pull/4))
 - [ ] 4. Terraformによるインフラのコード化
 - [ ] 5. GitHub Actionsによる自動デプロイ
 
 題材はTODO管理API(`src/Todo.Api`)。
+
+## ローカル開発
+RDSはプライベートサブネットにあるためローカルから直接繋げない。ローカルではDocker Composeでアプリ+ローカル用PostgreSQLをまとめて起動する([ADR-0010](docs/adr/0010-local-dev-database.md))。
+```bash
+docker compose up -d --build
+curl http://localhost:8080/todos
+docker compose down
+```
 
 ## 記録のルール
 - 各段階で、なぜその技術・構成を選んだかをADR(Architecture Decision Record)として [docs/adr/](docs/adr/) に残す

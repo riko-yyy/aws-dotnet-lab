@@ -1,0 +1,33 @@
+services:
+  api:
+    build:
+      context: ./src/Todo.Api
+    ports:
+      - "8080:8080"
+    environment:
+      Db__Host: db
+      Db__Port: "5432"
+      Db__Name: tododb
+      Db__Username: postgres
+      Db__Password: localdevpassword
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_PASSWORD: localdevpassword
+      POSTGRES_DB: tododb
+    ports:
+      - "5432:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  db-data:
