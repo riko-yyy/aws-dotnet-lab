@@ -119,3 +119,13 @@ resource "aws_security_group" "db" {
 resource "aws_ecr_repository" "app" {
   name = "todo-api"
 }
+
+resource "aws_ecs_cluster" "main" {
+  name = "todo-api-cluster"
+
+  configuration {
+    execute_command_configuration {
+      logging = "DEFAULT"
+    }
+  }
+}
