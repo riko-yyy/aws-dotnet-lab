@@ -130,6 +130,8 @@ resource "aws_ecs_cluster" "main" {
   }
 }
 
+data "aws_caller_identity" "current" {}
+
 data "aws_iam_policy_document" "ecs_task_assume_role" {
   statement {
     effect  = "Allow"
@@ -153,7 +155,7 @@ data "aws_iam_policy_document" "db_secret_read" {
     sid       = "VisualEditor0"
     effect    = "Allow"
     actions   = ["secretsmanager:GetSecretValue"]
-    resources = ["arn:aws:secretsmanager:ap-northeast-1:737816144781:secret:rds!db-392a3f9c-590d-47ec-bd8e-ee20a30a908a-58GHaR"]
+    resources = [aws_db_instance.main.master_user_secret[0].secret_arn]
   }
 }
 
@@ -179,7 +181,7 @@ resource "aws_ecs_task_definition" "app" {
   container_definitions = jsonencode([
     {
       name      = "todo-api"
-      image     = "737816144781.dkr.ecr.ap-northeast-1.amazonaws.com/todo-api:latest"
+      image     = "${data.aws_caller_identity.current.account_id}.dkr.ecr.ap-northeast-1.amazonaws.com/todo-api:latest"
       essential = true
 
       portMappings = [
@@ -204,11 +206,11 @@ resource "aws_ecs_task_definition" "app" {
       secrets = [
         {
           name      = "Db__Username"
-          valueFrom = "arn:aws:secretsmanager:ap-northeast-1:737816144781:secret:rds!db-392a3f9c-590d-47ec-bd8e-ee20a30a908a-58GHaR:username::"
+          valueFrom = "${aws_db_instance.main.master_user_secret[0].secret_arn}:username::"
         },
         {
           name      = "Db__Password"
-          valueFrom = "arn:aws:secretsmanager:ap-northeast-1:737816144781:secret:rds!db-392a3f9c-590d-47ec-bd8e-ee20a30a908a-58GHaR:password::"
+          valueFrom = "${aws_db_instance.main.master_user_secret[0].secret_arn}:password::"
         },
       ]
       ulimits        = []
