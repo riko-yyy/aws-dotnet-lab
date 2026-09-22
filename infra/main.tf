@@ -156,7 +156,7 @@ data "aws_iam_policy_document" "github_actions_role" {
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:riko-yyy/aws-dotnet-lab:ref:refs/heads/main"]
+      values   = ["repo:riko-yyy@51203198/aws-dotnet-lab@1375461367:ref:refs/heads/main"]
     }
     principals {
       type        = "Federated"

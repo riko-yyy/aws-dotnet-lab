@@ -19,4 +19,6 @@ A案(OIDC連携)。
 - B案(IAMユーザー+長期アクセスキー): セットアップは簡単だが、ADR-0004と同様の理由(長期認証情報の漏洩リスク)で見送り
 
 ## 補足
-信頼ポリシーの条件は、GitHubのOIDCトークンに含まれる`sub`クレームを`repo:riko-yyy/aws-dotnet-lab:ref:refs/heads/main`に限定する。手動実行(`workflow_dispatch`、ADR-0026)であっても、実行時にどのブランチを選んだかが`sub`に反映されるため、mainブランチ以外から実行してもロールを引き受けられないようにする多重の防御。
+信頼ポリシーの条件は、GitHubのOIDCトークンに含まれる`sub`クレームを`repo:riko-yyy@51203198/aws-dotnet-lab@1375461367:ref:refs/heads/main`に限定する。手動実行(`workflow_dispatch`、ADR-0026)であっても、実行時にどのブランチを選んだかが`sub`に反映されるため、mainブランチ以外から実行してもロールを引き受けられないようにする多重の防御。
+
+`@数値ID`の部分は、GitHubのユーザー名・リポジトリ名がリネームされても不変の内部ID(`riko-yyy`アカウントの`51203198`、`aws-dotnet-lab`リポジトリの`1375461367`)。当初は`repo:riko-yyy/aws-dotnet-lab:ref:refs/heads/main`(ID無し)で作成したが、実際に発行される`sub`クレームには既にこのIDが付与されており、`StringEquals`の完全一致条件が通らず`AssumeRoleWithWebIdentity`が失敗した(初回のworkflow_dispatch実行で発覚、CloudTrailの`errorMessage: "Not authorized to perform sts:AssumeRoleWithWebIdentity"`で原因を特定)。IDを含めることで、リポジトリ名が将来誰かに奪われても(名前を捨てた後に第三者が同じ名前で再作成しても)信頼ポリシーが誤って一致することを防げる、というメリットもある。
