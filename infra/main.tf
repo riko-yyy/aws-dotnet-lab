@@ -262,3 +262,42 @@ resource "aws_db_subnet_group" "main" {
   description = "todo-api RDS subnet group"
   subnet_ids  = [aws_subnet.private_1a.id, aws_subnet.private_1c.id]
 }
+
+resource "aws_db_instance" "main" {
+  identifier     = "todo-api-db"
+  engine         = "postgres"
+  engine_version = "18.3"
+  instance_class = "db.t4g.micro"
+
+  allocated_storage     = 20
+  max_allocated_storage = 1000
+  storage_type          = "gp2"
+  storage_encrypted     = true
+
+  db_name  = "tododb"
+  username = "postgres"
+
+  manage_master_user_password = true
+
+  db_subnet_group_name   = aws_db_subnet_group.main.name
+  vpc_security_group_ids = [aws_security_group.db.id]
+  availability_zone      = "ap-northeast-1a"
+  multi_az               = false
+  publicly_accessible    = false
+  network_type           = "IPV4"
+
+  parameter_group_name = "default.postgres18"
+
+  backup_retention_period = 1
+  backup_window           = "19:25-19:55"
+  maintenance_window      = "thu:13:32-thu:14:02"
+
+  auto_minor_version_upgrade = true
+  deletion_protection        = false
+  copy_tags_to_snapshot      = true
+
+  performance_insights_enabled          = true
+  performance_insights_retention_period = 7
+
+  skip_final_snapshot = true
+}
