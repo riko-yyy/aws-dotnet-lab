@@ -28,7 +28,7 @@ resource "aws_subnet" "private_1a" {
 
 resource "aws_subnet" "private_1c" {
   vpc_id = aws_vpc.main.id
-    cidr_block = "10.0.12.0/24"
+  cidr_block = "10.0.12.0/24"
   availability_zone = "ap-northeast-1c"
 
   tags = {
@@ -38,4 +38,8 @@ resource "aws_subnet" "private_1c" {
 
 resource "aws_internet_gateway" "main" {
   vpc_id = aws_vpc.main.id
+
+  tags = {
+    Name = "todo-api-igw"
+  }
 }
