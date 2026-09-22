@@ -11,7 +11,7 @@
 - [x] 1. ローカルでDocker化した.NET Core APIを動かす([PR #1](https://github.com/riko-yyy/aws-dotnet-lab/pull/1))
 - [x] 2. ECS Fargateへのデプロイ([PR #2](https://github.com/riko-yyy/aws-dotnet-lab/pull/2))
 - [x] 3. RDSと接続したCRUD実装([PR #4](https://github.com/riko-yyy/aws-dotnet-lab/pull/4))
-- [ ] 4. Terraformによるインフラのコード化
+- [x] 4. Terraformによるインフラのコード化
 - [ ] 5. GitHub Actionsによる自動デプロイ
 
 題材はTODO管理API(`src/Todo.Api`)。
@@ -22,6 +22,14 @@ RDSはプライベートサブネットにあるためローカルから直接�
 docker compose up -d --build
 curl http://localhost:8080/todos
 docker compose down
+```
+
+## インフラのコード化(Terraform)
+`infra/`配下にTerraformコードがある。第1〜3段階で手動構築したAWSリソースを`terraform import`で取り込み、全リソースがコードと一致(`terraform plan`でNo changes)することを確認済み([ADR-0018](docs/adr/0018-terraform-import-vs-recreate.md)、[ADR-0019](docs/adr/0019-terraform-state-backend.md))。Stateはこのプロジェクト専用のS3バケットに保存している。
+```bash
+cd infra
+terraform init
+terraform plan
 ```
 
 ## 記録のルール
