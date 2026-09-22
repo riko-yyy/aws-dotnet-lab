@@ -227,3 +227,31 @@ resource "aws_ecs_task_definition" "app" {
     }
   ])
 }
+
+resource "aws_ecs_service" "app" {
+  name                    = "todo-api-service"
+  cluster                 = aws_ecs_cluster.main.id
+  task_definition         = aws_ecs_task_definition.app.arn
+  desired_count           = 0
+  enable_ecs_managed_tags = true
+
+  capacity_provider_strategy {
+    capacity_provider = "FARGATE"
+    weight            = 1
+    base              = 0
+  }
+
+  network_configuration {
+    subnets          = [aws_subnet.public_1a.id]
+    security_groups  = [aws_security_group.app.id]
+    assign_public_ip = true
+  }
+
+  deployment_maximum_percent         = 200
+  deployment_minimum_healthy_percent = 100
+
+  deployment_circuit_breaker {
+    enable   = true
+    rollback = true
+  }
+}
