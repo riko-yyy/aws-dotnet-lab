@@ -1,4 +1,4 @@
-# ADR-0026: IAM Access Analyzerは外部アクセス分析のみ、手動で有効化する
+# ADR-0024: IAM Access Analyzerは外部アクセス分析のみ、手動で有効化する
 
 ## 論点1
 IAM Access Analyzerをどの範囲で有効にするか。

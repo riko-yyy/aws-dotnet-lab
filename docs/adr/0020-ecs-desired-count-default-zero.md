@@ -1,4 +1,4 @@
-# ADR-0022: ECSサービスの`desired_count`は基本0、確認時のみ1にする
+# ADR-0020: ECSサービスの`desired_count`は基本0、確認時のみ1にする
 
 ## 論点
 ECSサービスの`desired_count`をいくつにしておくか。

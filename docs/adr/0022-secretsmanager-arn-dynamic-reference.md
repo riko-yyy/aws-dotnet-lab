@@ -1,4 +1,4 @@
-# ADR-0024: SecretsManagerのARNとAWSアカウントIDをハードコードせず動的参照にする
+# ADR-0022: SecretsManagerのARNとAWSアカウントIDをハードコードせず動的参照にする
 
 ## 論点
 RDSのmaster user secretのARN、およびECRイメージURIに含まれるAWSアカウントIDを、コード上でどう指定するか。
