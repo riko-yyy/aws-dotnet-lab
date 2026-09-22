@@ -231,9 +231,10 @@ resource "aws_ecs_task_definition" "app" {
 resource "aws_ecs_service" "app" {
   name                    = "todo-api-service"
   cluster                 = aws_ecs_cluster.main.id
-  task_definition         = aws_ecs_task_definition.app.arn
+  task_definition         = "${aws_ecs_task_definition.app.family}:${aws_ecs_task_definition.app.revision}"
   desired_count           = 0
   enable_ecs_managed_tags = true
+  wait_for_steady_state   = false
 
   capacity_provider_strategy {
     capacity_provider = "FARGATE"
@@ -254,4 +255,10 @@ resource "aws_ecs_service" "app" {
     enable   = true
     rollback = true
   }
+}
+
+resource "aws_db_subnet_group" "main" {
+  name        = "todo-api-db-subnet-group"
+  description = "todo-api RDS subnet group"
+  subnet_ids  = [aws_subnet.private_1a.id, aws_subnet.private_1c.id]
 }
