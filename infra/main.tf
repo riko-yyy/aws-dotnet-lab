@@ -70,3 +70,8 @@ resource "aws_default_route_table" "main" {
     gateway_id = aws_internet_gateway.main.id
   }
 }
+
+resource "aws_route_table_association" "public_1a" {
+  subnet_id      = aws_subnet.public_1a.id
+  route_table_id = aws_default_route_table.main.id
+}
