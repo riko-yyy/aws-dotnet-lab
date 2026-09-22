@@ -115,3 +115,7 @@ resource "aws_security_group" "db" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 }
+
+resource "aws_ecr_repository" "app" {
+  name = "todo-api"
+}
