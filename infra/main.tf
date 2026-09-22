@@ -162,3 +162,68 @@ resource "aws_iam_role_policy" "db_secret_read" {
   role   = aws_iam_role.task_execution.id
   policy = data.aws_iam_policy_document.db_secret_read.json
 }
+
+resource "aws_ecs_task_definition" "app" {
+  family                   = "todo-api-task"
+  requires_compatibilities = ["FARGATE"]
+  network_mode             = "awsvpc"
+  cpu                      = "256"
+  memory                   = "512"
+  execution_role_arn       = aws_iam_role.task_execution.arn
+
+  runtime_platform {
+    cpu_architecture        = "X86_64"
+    operating_system_family = "LINUX"
+  }
+
+  container_definitions = jsonencode([
+    {
+      name      = "todo-api"
+      image     = "737816144781.dkr.ecr.ap-northeast-1.amazonaws.com/todo-api:latest"
+      essential = true
+
+      portMappings = [
+        {
+          containerPort = 8080
+          hostPort      = 8080
+          protocol      = "tcp"
+          name          = "todo-api-8080-tcp"
+          appProtocol   = "http"
+        }
+      ]
+
+      environment = [
+        { name = "Db__Port", value = "5432" },
+        { name = "Db__Host", value = "todo-api-db.cdwgqdzz9nbe.ap-northeast-1.rds.amazonaws.com" },
+        { name = "Db__Name", value = "tododb" },
+      ]
+      environmentFiles = []
+      mountPoints      = []
+      volumesFrom      = []
+
+      secrets = [
+        {
+          name      = "Db__Username"
+          valueFrom = "arn:aws:secretsmanager:ap-northeast-1:737816144781:secret:rds!db-392a3f9c-590d-47ec-bd8e-ee20a30a908a-58GHaR:username::"
+        },
+        {
+          name      = "Db__Password"
+          valueFrom = "arn:aws:secretsmanager:ap-northeast-1:737816144781:secret:rds!db-392a3f9c-590d-47ec-bd8e-ee20a30a908a-58GHaR:password::"
+        },
+      ]
+      ulimits        = []
+      systemControls = []
+
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          "awslogs-group"         = "/ecs/todo-api-task"
+          "awslogs-region"        = "ap-northeast-1"
+          "awslogs-stream-prefix" = "ecs"
+          "awslogs-create-group"  = "true"
+        }
+        secretOptions = []
+      }
+    }
+  ])
+}
