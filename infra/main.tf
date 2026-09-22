@@ -1,3 +1,9 @@
+variable "bootstrap_image_tag" {
+  description = "初回terraform apply時のみ使われる初期イメージタグ。以降の実際のデプロイはGitHub ActionsがgitのSHAタグでECSタスク定義を直接更新し、Terraformはcontainer_definitionsをlifecycle.ignore_changesで無視する(ADR-0027)"
+  type        = string
+  default     = "latest"
+}
+
 resource "aws_vpc" "main" {
   cidr_block = "10.0.0.0/16"
 
@@ -132,6 +138,77 @@ resource "aws_ecs_cluster" "main" {
 
 data "aws_caller_identity" "current" {}
 
+resource "aws_iam_openid_connect_provider" "github_actions" {
+  url             = "https://token.actions.githubusercontent.com"
+  client_id_list  = ["sts.amazonaws.com"]
+  thumbprint_list = ["6938fd4d98bab03faadb97b34396831e3780aea1"]
+}
+
+data "aws_iam_policy_document" "github_actions_role" {
+  statement {
+    effect  = "Allow"
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:sub"
+      values   = ["repo:riko-yyy/aws-dotnet-lab:ref:refs/heads/main"]
+    }
+    principals {
+      type        = "Federated"
+      identifiers = [aws_iam_openid_connect_provider.github_actions.arn]
+    }
+  }
+}
+
+resource "aws_iam_role" "github_actions_deploy" {
+  name               = "todo-api-github-actions-deploy-role"
+  assume_role_policy = data.aws_iam_policy_document.github_actions_role.json
+}
+
+data "aws_iam_policy_document" "github_actions_deploy" {
+  statement {
+    effect    = "Allow"
+    actions   = ["ecr:GetAuthorizationToken"]
+    resources = ["*"]
+  }
+  statement {
+    effect    = "Allow"
+    actions   = ["ecr:BatchCheckLayerAvailability", "ecr:InitiateLayerUpload", "ecr:UploadLayerPart", "ecr:CompleteLayerUpload", "ecr:PutImage"]
+    resources = [aws_ecr_repository.app.arn]
+  }
+  statement {
+    effect    = "Allow"
+    actions   = ["ecs:RegisterTaskDefinition", "ecs:DescribeTaskDefinition"]
+    resources = ["*"]
+  }
+  statement {
+    effect    = "Allow"
+    actions   = ["ecs:UpdateService", "ecs:DescribeServices"]
+    resources = [aws_ecs_service.app.id]
+  }
+  statement {
+    effect    = "Allow"
+    actions   = ["iam:PassRole"]
+    resources = [aws_iam_role.task_execution.arn]
+    condition {
+      test     = "StringEquals"
+      variable = "iam:PassedToService"
+      values   = ["ecs-tasks.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role_policy" "github_actions_deploy" {
+  name   = "todo-api-github-actions-deploy"
+  role   = aws_iam_role.github_actions_deploy.id
+  policy = data.aws_iam_policy_document.github_actions_deploy.json
+}
+
 data "aws_iam_policy_document" "ecs_task_assume_role" {
   statement {
     effect  = "Allow"
@@ -173,6 +250,10 @@ resource "aws_ecs_task_definition" "app" {
   memory                   = "512"
   execution_role_arn       = aws_iam_role.task_execution.arn
 
+  lifecycle {
+    ignore_changes = [container_definitions]
+  }
+
   runtime_platform {
     cpu_architecture        = "X86_64"
     operating_system_family = "LINUX"
@@ -181,7 +262,7 @@ resource "aws_ecs_task_definition" "app" {
   container_definitions = jsonencode([
     {
       name      = "todo-api"
-      image     = "${data.aws_caller_identity.current.account_id}.dkr.ecr.ap-northeast-1.amazonaws.com/todo-api:latest"
+      image     = "${data.aws_caller_identity.current.account_id}.dkr.ecr.ap-northeast-1.amazonaws.com/todo-api:${var.bootstrap_image_tag}"
       essential = true
 
       portMappings = [
