@@ -1,6 +1,6 @@
 # aws-dotnet-lab
 
-このプロジェクトは、.NET CoreとAWSを使ったインフラ構築を学ぶための個人学習リポジトリです。
+このプロジェクトは、.NETとAWSを使ったインフラ構築を学ぶための個人学習リポジトリです。
 
 ## 概要
 「動くプロダクトを作ること」ではなく「意思決定の記録を残すこと」を目的とし、以下のように進めます。
@@ -40,7 +40,7 @@ flowchart LR
 ```
 
 ## 進捗
-- [x] 1. ローカルでDocker化した.NET Core APIを動かす([PR #1](https://github.com/riko-yyy/aws-dotnet-lab/pull/1))
+- [x] 1. ローカルでDocker化した.NET APIを動かす([PR #1](https://github.com/riko-yyy/aws-dotnet-lab/pull/1))
 - [x] 2. ECS Fargateへのデプロイ([PR #2](https://github.com/riko-yyy/aws-dotnet-lab/pull/2))
 - [x] 3. RDSと接続したCRUD実装([PR #4](https://github.com/riko-yyy/aws-dotnet-lab/pull/4))
 - [x] 4. Terraformによるインフラのコード化([PR #7](https://github.com/riko-yyy/aws-dotnet-lab/pull/7))
