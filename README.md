@@ -97,3 +97,13 @@ terraform plan
 - 答えを一度に全部渡すのではなく、まず選択肢を提示して一緒に検討する形で進めてほしい
 - 「なぜそうするのか」の説明を重視する。手順だけのコピペ的な回答は避ける
 - つまずいたときは、原因の切り分け方から一緒に考えてほしい
+
+## ライセンス
+[MIT License](LICENSE)
+
+`infra/`のTerraformコードを自分の環境で使う場合は、以下に注意してください。
+- このリポジトリ固有の値がハードコードされているため、次の箇所を書き換える必要があります
+  - `infra/backend.tf`: stateを保存するS3バケット名。バケットはTerraform管理外のため事前に自分で作成し、その名前に置き換える(バケット名は全世界で一意なので、そのままでは使えない)
+  - `infra/main.tf`: GitHub ActionsのOIDC信頼ポリシーの`sub`条件(owner/repoの名前とID)
+  - `infra/provider.tf`: AWSプロファイル名(`dotnet-lab`)とリージョン(`ap-northeast-1`)
+- `terraform apply`を実行すると、そのAWSアカウントで課金が発生します(RDSは常時課金。ECSのタスク数は既定で0)
