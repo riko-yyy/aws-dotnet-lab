@@ -5,6 +5,10 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddOpenApi();
 
+// Lambdaで動くときは、API Gateway(HTTP API)から届くイベントをHTTPリクエストに変換してエンドポイントに渡す。
+// Lambda以外(ECS、ローカル)では何もせず、通常どおりKestrelで起動する(ADR-0031、ADR-0032)
+builder.Services.AddAWSLambdaHosting(LambdaEventSource.HttpApi);
+
 // データアクセスの実装を設定値で切り替える。ECS版は既定のPostgres、サーバーレス版はDynamoDb(ADR-0030、ADR-0037)
 var useDynamoDb = builder.Configuration["Storage:Provider"] == "DynamoDb";
 
