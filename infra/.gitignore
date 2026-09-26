@@ -3,3 +3,5 @@
 *.tfstate.*
 crash.log
 *.tfvars
+*.tfplan
+backend.hcl

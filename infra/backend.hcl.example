@@ -1,0 +1,7 @@
+# infra/backend.hcl の見本。コピーして自分の値に書き換える(backend.hcl はgit管理外)
+#   cp backend.hcl.example backend.hcl
+# stateを保存するS3バケットは、Terraformの管理外で事前に作成しておく(ADR-0019)
+bucket       = "<your-terraform-state-bucket>"
+region       = "ap-northeast-1"
+profile      = "<your-aws-profile>"
+use_lockfile = true

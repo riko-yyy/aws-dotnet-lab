@@ -2,8 +2,9 @@ using Microsoft.EntityFrameworkCore;
 
 class EfTodoStore(TodoDbContext db) : ITodoStore
 {
-    public async Task<IReadOnlyList<TodoItem>> GetAllAsync() =>
-        await db.Todos.AsNoTracking().ToListAsync();
+    // 呼び出し側のTake()はSQLのLIMITにはならない(IAsyncEnumerableはC#側で列挙を止めるだけ)
+    public IAsyncEnumerable<TodoItem> GetAllAsync() =>
+        db.Todos.AsNoTracking().AsAsyncEnumerable();
 
     public async Task<TodoItem?> GetAsync(Guid id) =>
         await db.Todos.FindAsync(id);
