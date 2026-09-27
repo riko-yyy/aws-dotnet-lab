@@ -2,7 +2,8 @@
 // 更新・削除は「IDを渡して結果を受け取る」形にし、EF Coreの変更追跡に依存しないようにしている。
 public interface ITodoStore
 {
-    Task<IReadOnlyList<TodoItem>> GetAllAsync();
+    // 遅延実行で1件ずつ流す。件数の上限は呼び出し側(Program.cs)で掛ける(ADR-0038)
+    IAsyncEnumerable<TodoItem> GetAllAsync();
 
     Task<TodoItem?> GetAsync(Guid id);
 

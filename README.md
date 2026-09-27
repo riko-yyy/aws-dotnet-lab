@@ -66,12 +66,14 @@ docker compose down
 ```
 
 ## インフラのコード化(Terraform)
-`infra/`配下にTerraformコードがある。第1〜3段階で手動構築したAWSリソースを`terraform import`で取り込み、全リソースがコードと一致(`terraform plan`でNo changes)することを確認済み([ADR-0018](docs/adr/0018-terraform-import-vs-recreate.md)、[ADR-0019](docs/adr/0019-terraform-state-backend.md))。Stateはこのプロジェクト専用のS3バケットに保存している。
+`infra/ecs/`配下にTerraformコードがある。第1〜3段階で手動構築したAWSリソースを`terraform import`で取り込み、全リソースがコードと一致(`terraform plan`でNo changes)することを確認済み([ADR-0018](docs/adr/0018-terraform-import-vs-recreate.md)、[ADR-0019](docs/adr/0019-terraform-state-backend.md))。Stateはこのプロジェクト専用のS3バケットに保存している。
 ```bash
-cd infra
-terraform init
+cp infra/backend.hcl.example infra/backend.hcl   # 初回のみ。バケット名などを自分の値に書き換える
+cd infra/ecs
+terraform init -backend-config=../backend.hcl
 terraform plan
 ```
+RDS・タスク定義・ECSサービスは、普段は削除している(`ecs_enabled`の既定値はfalse)。使うときだけ`terraform apply -var ecs_enabled=true`で作成する([ADR-0029](docs/adr/0029-ecs-rds-on-demand.md))。
 
 ## CI/CD(GitHub Actions)
 
@@ -102,8 +104,8 @@ terraform plan
 [MIT License](LICENSE)
 
 `infra/`のTerraformコードを自分の環境で使う場合は、以下に注意してください。
+- stateを保存するS3バケットは、Terraform管理外のため事前に自分で作成し、`infra/backend.hcl`(`backend.hcl.example`をコピーして作る)にその名前を書く(バケット名は全世界で一意なので、そのままでは使えない)
 - このリポジトリ固有の値がハードコードされているため、次の箇所を書き換える必要があります
-  - `infra/backend.tf`: stateを保存するS3バケット名。バケットはTerraform管理外のため事前に自分で作成し、その名前に置き換える(バケット名は全世界で一意なので、そのままでは使えない)
-  - `infra/main.tf`: GitHub ActionsのOIDC信頼ポリシーの`sub`条件(owner/repoの名前とID)
-  - `infra/provider.tf`: AWSプロファイル名(`dotnet-lab`)とリージョン(`ap-northeast-1`)
-- `terraform apply`を実行すると、そのAWSアカウントで課金が発生します(RDSは常時課金。ECSのタスク数は既定で0)
+  - `infra/ecs/main.tf`: GitHub ActionsのOIDC信頼ポリシーの`sub`条件(owner/repoの名前とID)
+  - `infra/ecs/provider.tf`: AWSプロファイル名(`dotnet-lab`)とリージョン(`ap-northeast-1`)
+- `terraform apply`を実行すると、そのAWSアカウントで課金が発生します(`ecs_enabled=true`にするとRDSが常時課金になる。ECSのタスク数は既定で0)

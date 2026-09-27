@@ -1,5 +1,11 @@
+variable "ecs_enabled" {
+  description = "ECS版のRDS・タスク定義・ECSサービスを作るかどうか。普段はfalse(削除)にしておき、使うときだけ -var ecs_enabled=true でapplyする(ADR-0029)。RDSを作り直すとSecretのARNが変わるため、それを参照するタスク定義とサービスも必ずセットで作り直す"
+  type        = bool
+  default     = false
+}
+
 variable "bootstrap_image_tag" {
-  description = "初回terraform apply時のみ使われる初期イメージタグ。以降の実際のデプロイはGitHub ActionsがgitのSHAタグでECSタスク定義を直接更新し、Terraformはcontainer_definitionsをlifecycle.ignore_changesで無視する(ADR-0027)"
+  description = "ecs_enabled=trueでタスク定義を新しく作るときにだけ使われる初期イメージタグ。以降の実際のデプロイはGitHub ActionsがgitのSHAタグでECSタスク定義を直接更新し、Terraformはcontainer_definitionsをlifecycle.ignore_changesで無視する(ADR-0027)"
   type        = string
   default     = "latest"
 }
@@ -189,7 +195,7 @@ data "aws_iam_policy_document" "github_actions_deploy" {
   statement {
     effect    = "Allow"
     actions   = ["ecs:UpdateService", "ecs:DescribeServices"]
-    resources = [aws_ecs_service.app.id]
+    resources = ["arn:aws:ecs:ap-northeast-1:${data.aws_caller_identity.current.account_id}:service/${aws_ecs_cluster.main.name}/${local.ecs_service_name}"]
   }
   statement {
     effect    = "Allow"
@@ -228,21 +234,27 @@ resource "aws_iam_role" "task_execution" {
 }
 
 data "aws_iam_policy_document" "db_secret_read" {
+  count = var.ecs_enabled ? 1 : 0
+
   statement {
     sid       = "VisualEditor0"
     effect    = "Allow"
     actions   = ["secretsmanager:GetSecretValue"]
-    resources = [aws_db_instance.main.master_user_secret[0].secret_arn]
+    resources = [aws_db_instance.main[0].master_user_secret[0].secret_arn]
   }
 }
 
 resource "aws_iam_role_policy" "db_secret_read" {
+  count = var.ecs_enabled ? 1 : 0
+
   name   = "todo-api-db-secret-read"
   role   = aws_iam_role.task_execution.id
-  policy = data.aws_iam_policy_document.db_secret_read.json
+  policy = data.aws_iam_policy_document.db_secret_read[0].json
 }
 
 resource "aws_ecs_task_definition" "app" {
+  count = var.ecs_enabled ? 1 : 0
+
   family                   = "todo-api-task"
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
@@ -277,7 +289,7 @@ resource "aws_ecs_task_definition" "app" {
 
       environment = [
         { name = "Db__Port", value = "5432" },
-        { name = "Db__Host", value = "todo-api-db.cdwgqdzz9nbe.ap-northeast-1.rds.amazonaws.com" },
+        { name = "Db__Host", value = aws_db_instance.main[0].address },
         { name = "Db__Name", value = "tododb" },
       ]
       environmentFiles = []
@@ -287,11 +299,11 @@ resource "aws_ecs_task_definition" "app" {
       secrets = [
         {
           name      = "Db__Username"
-          valueFrom = "${aws_db_instance.main.master_user_secret[0].secret_arn}:username::"
+          valueFrom = "${aws_db_instance.main[0].master_user_secret[0].secret_arn}:username::"
         },
         {
           name      = "Db__Password"
-          valueFrom = "${aws_db_instance.main.master_user_secret[0].secret_arn}:password::"
+          valueFrom = "${aws_db_instance.main[0].master_user_secret[0].secret_arn}:password::"
         },
       ]
       ulimits        = []
@@ -312,9 +324,11 @@ resource "aws_ecs_task_definition" "app" {
 }
 
 resource "aws_ecs_service" "app" {
-  name                    = "todo-api-service"
+  count = var.ecs_enabled ? 1 : 0
+
+  name                    = local.ecs_service_name
   cluster                 = aws_ecs_cluster.main.id
-  task_definition         = "${aws_ecs_task_definition.app.family}:${aws_ecs_task_definition.app.revision}"
+  task_definition         = "${aws_ecs_task_definition.app[0].family}:${aws_ecs_task_definition.app[0].revision}"
   desired_count           = 0
   enable_ecs_managed_tags = true
   wait_for_steady_state   = false
@@ -338,6 +352,12 @@ resource "aws_ecs_service" "app" {
     enable   = true
     rollback = true
   }
+
+  # どのリビジョンを使うかはGitHub Actionsのデプロイが更新する(ADR-0027)。
+  # 無視しないと、terraform applyのたびにTerraformが作った初期リビジョンへ巻き戻してしまう
+  lifecycle {
+    ignore_changes = [task_definition]
+  }
 }
 
 resource "aws_db_subnet_group" "main" {
@@ -347,6 +367,8 @@ resource "aws_db_subnet_group" "main" {
 }
 
 resource "aws_db_instance" "main" {
+  count = var.ecs_enabled ? 1 : 0
+
   identifier     = "todo-api-db"
   engine         = "postgres"
   engine_version = "18.3"
@@ -383,4 +405,30 @@ resource "aws_db_instance" "main" {
   performance_insights_retention_period = 7
 
   skip_final_snapshot = true
+}
+
+locals {
+  # ECSサービスはecs_enabled=falseのとき存在しないため、GitHub Actions用IAMポリシーでは名前からARNを組み立てて参照する
+  ecs_service_name = "todo-api-service"
+}
+
+# ecs_enabledでcountを付けたことによるアドレス変更(main -> main[0])。既存リソースを作り直さず、stateの付け替えだけにする
+moved {
+  from = aws_db_instance.main
+  to   = aws_db_instance.main[0]
+}
+
+moved {
+  from = aws_iam_role_policy.db_secret_read
+  to   = aws_iam_role_policy.db_secret_read[0]
+}
+
+moved {
+  from = aws_ecs_task_definition.app
+  to   = aws_ecs_task_definition.app[0]
+}
+
+moved {
+  from = aws_ecs_service.app
+  to   = aws_ecs_service.app[0]
 }
