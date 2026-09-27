@@ -144,7 +144,7 @@ resource "aws_lambda_function" "api" {
   role                           = aws_iam_role.lambda.arn
   architectures                  = ["x86_64"]
   image_uri                      = "${aws_ecr_repository.lambda.repository_url}:${var.bootstrap_image_tag}"
-  memory_size                    = 512
+  memory_size                    = 1024
   package_type                   = "Image"
   reserved_concurrent_executions = 5
   timeout                        = 10

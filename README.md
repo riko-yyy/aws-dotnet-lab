@@ -9,7 +9,30 @@
 - 題材は小さいToy API(またはリソースの少ない架空サービス)。プロダクトへの責任を負わない前提で自由に試行錯誤する
 - 難易度は段階的に上げる。各段階をクリアしてから次に進む
 
-## アーキテクチャ
+同じTODO API(`src/Todo.Api`)を、**ECS版**(ECS Fargate + RDS)と**サーバーレス版**(Lambda + API Gateway + DynamoDB)の2つの基盤に載せている。ECS版を作ったあと、アプリのコードは共通のまま基盤に依存する部分だけを差し替えてサーバーレス版を作り、両者を比較した([比較資料](docs/comparison.md))。
+
+## 動作確認
+サーバーレス版を公開している。
+```bash
+curl https://cf1w8f2b3a.execute-api.ap-northeast-1.amazonaws.com/todos
+```
+- しばらくアクセスがないと、最初の応答に1.5秒程度かかる(コールドスタート)
+- データは作成から7日で自動削除される。一覧は最大100件まで
+- 大量のアクセスは制限している(スロットリングなど、[ADR-0036](docs/adr/0036-public-url-protection.md))
+
+ECS版は、普段はRDSごと削除していて、必要なときにTerraformで再現する([ADR-0029](docs/adr/0029-ecs-rds-on-demand.md))。
+
+## 構成
+
+| | ECS版 | サーバーレス版 |
+|---|---|---|
+| 実行基盤 | ECS Fargate | Lambda(コンテナイメージ) |
+| 入口 | タスクのパブリックIP(ALBなし) | API Gateway(HTTP API) |
+| DB | RDS for PostgreSQL(EF Core) | DynamoDB(オンデマンド) |
+| IaC | Terraform(`infra/ecs/`) | Terraform(`infra/serverless/`) |
+| デプロイ | GitHub Actions(`deploy.yml`) | GitHub Actions(`deploy-lambda.yml`) |
+
+### ECS版
 ```mermaid
 flowchart LR
     Dev[開発者]
@@ -41,14 +64,52 @@ flowchart LR
     ECS -. "GetSecretValue" .-> SM
 ```
 
+### サーバーレス版
+```mermaid
+flowchart LR
+    Dev[開発者]
+    GHA[GitHub Actions<br/>workflow_dispatch]
+    Client[クライアント]
+
+    subgraph AWS["AWS Account(VPCなし)"]
+        ECR[(ECR: todo-api-lambda)]
+        APIGW[API Gateway HTTP API<br/>スロットリング]
+        Lambda[Lambda: todo-api<br/>コンテナイメージ / 同時実行数5]
+        DDB[(DynamoDB: todo-api-todos<br/>TTL 7日 / 最大スループット)]
+    end
+
+    Dev -- "手動実行" --> GHA
+    GHA -- "OIDCでRole引き受け\nECR push / 関数のイメージ更新" --> ECR
+    GHA --> Lambda
+    Client -- "HTTPS" --> APIGW --> Lambda
+    Lambda -- "IAMで認証" --> DDB
+```
+
 ## 進捗
+ECS版
 - [x] 1. ローカルでDocker化した.NET APIを動かす([PR #1](https://github.com/riko-yyy/aws-dotnet-lab/pull/1))
 - [x] 2. ECS Fargateへのデプロイ([PR #2](https://github.com/riko-yyy/aws-dotnet-lab/pull/2))
 - [x] 3. RDSと接続したCRUD実装([PR #4](https://github.com/riko-yyy/aws-dotnet-lab/pull/4))
 - [x] 4. Terraformによるインフラのコード化([PR #7](https://github.com/riko-yyy/aws-dotnet-lab/pull/7))
 - [x] 5. GitHub Actionsによる自動デプロイ([PR #9](https://github.com/riko-yyy/aws-dotnet-lab/pull/9))
 
-題材はTODO管理API(`src/Todo.Api`)。
+サーバーレス版(同じAPIを別の基盤に載せる)
+- [x] DBの選択と、ECS版のRDSの扱いの判断([PR #14](https://github.com/riko-yyy/aws-dotnet-lab/pull/14))
+- [x] データアクセスのインターフェースへの切り出し([PR #15](https://github.com/riko-yyy/aws-dotnet-lab/pull/15))
+- [x] Lambdaへの載せ方と入口の判断([PR #16](https://github.com/riko-yyy/aws-dotnet-lab/pull/16))
+- [x] DynamoDB実装、Lambda対応、コンソールでの構築とTerraformへの取り込み、デプロイ([PR #17](https://github.com/riko-yyy/aws-dotnet-lab/pull/17))
+- [x] コールドスタートの計測と、ECS版との比較([PR #18](https://github.com/riko-yyy/aws-dotnet-lab/pull/18))
+
+## ECS版とサーバーレス版の比較
+詳しくは[比較資料](docs/comparison.md)を参照。
+
+| | ECS版 | サーバーレス版 |
+|---|---|---|
+| 待機コスト(常設した場合) | 月$35前後(RDS、Fargate、パブリックIPv4) | ほぼ0(使われた分だけ) |
+| 起動 | タスクの起動に約25秒。起動後は動き続ける | コールドスタート約1.5秒。アクセスが途切れるたびに起きる |
+| 起動後の応答 | 約22ms(HTTP、直接接続) | 約80ms(HTTPS、API Gateway経由) |
+| 運用 | VPC、マイグレーション、Secrets Managerを管理する | VPC不要。データの形はアプリが保証する |
+| アプリのコード | 共通。違うのは、データアクセスの実装、`AddAWSLambdaHosting()`の1行、Dockerfileの最終ステージだけ | |
 
 ## 設計のハイライト
 - [ADR-0004](docs/adr/0004-iam-authentication.md): AWS認証はIAM Identity Center(一時認証情報)。長期アクセスキーを避けた
@@ -56,6 +117,10 @@ flowchart LR
 - [ADR-0019](docs/adr/0019-terraform-state-backend.md): TerraformのstateはS3+ネイティブロック。DynamoDBを使わない構成
 - [ADR-0022](docs/adr/0022-secretsmanager-arn-dynamic-reference.md): SecretsManagerのARNをハードコードして公開リポジトリにコミットしてしまった事故と、動的参照化+RDS作り直しでの復旧
 - [ADR-0025](docs/adr/0025-github-actions-oidc-auth.md)〜[0027](docs/adr/0027-deploy-outside-terraform.md): GitHub ActionsのOIDC認証、手動デプロイ、Terraform管理外での更新という設計判断一式
+- [ADR-0028](docs/adr/0028-serverless-database.md)・[0029](docs/adr/0029-ecs-rds-on-demand.md): RDSの待機コスト(実績で月約$24)を理由に、サーバーレス版はDynamoDB、ECS版はRDSごと普段は削除してTerraformで再現する運用にした。実装の途中で、`ignore_changes`のためにRDSを作り直すとタスク定義が古いSecretを参照し続ける問題を見つけ、タスク定義ごと作り直す形に直した([journal](docs/journal/2026-09-23-ignore-changes-stale-secret-arn.md))
+- [ADR-0030](docs/adr/0030-extract-todo-store.md): 第3段階で「実装が1つだけ」として消したデータアクセスのインターフェースを、2つ目の実装(DynamoDB)が必要になった時点で入れ直した
+- [ADR-0036](docs/adr/0036-public-url-protection.md): 公開URLの防御を4層で設計し、負荷をかけて確かめた。API Gatewayのスロットリングは実効で設定値の約6倍まで通すことが分かり、料金の見積もりを修正した
+- [ADR-0035](docs/adr/0035-cold-start-strategy.md): コールドスタートを、メモリとReadyToRunの有無で計測した。メモリ(=CPU)の効果がいちばん大きく、1024MBにした
 
 ## ローカル開発
 RDSはプライベートサブネットにあるためローカルから直接繋げない。ローカルではDocker Composeでアプリ+ローカル用PostgreSQLをまとめて起動する([ADR-0010](docs/adr/0010-local-dev-database.md))。
@@ -65,19 +130,30 @@ curl http://localhost:8080/todos
 docker compose down
 ```
 
+`dynamodb`プロファイルを付けると、AWS公式のDynamoDB Localにつないだ構成(8081番)も並べて起動する。同じコードが、設定値だけでPostgreSQLとDynamoDBを切り替えて動くことを確かめられる。Lambdaそのものは起動しない(Lambdaの経路はAWS上で確かめる)。
+```bash
+docker compose --profile dynamodb up -d --build
+curl http://localhost:8081/todos
+docker compose --profile dynamodb down
+```
+
 ## インフラのコード化(Terraform)
-`infra/ecs/`配下にTerraformコードがある。第1〜3段階で手動構築したAWSリソースを`terraform import`で取り込み、全リソースがコードと一致(`terraform plan`でNo changes)することを確認済み([ADR-0018](docs/adr/0018-terraform-import-vs-recreate.md)、[ADR-0019](docs/adr/0019-terraform-state-backend.md))。Stateはこのプロジェクト専用のS3バケットに保存している。
+ECS版は`infra/ecs/`、サーバーレス版は`infra/serverless/`にあり、stateも分けている([ADR-0039](docs/adr/0039-terraform-layout-for-two-tracks.md))。どちらも、まずコンソールで構築してから、Terraformに取り込んだ。
+- ECS版: `terraform import`コマンドで取り込んだ([ADR-0018](docs/adr/0018-terraform-import-vs-recreate.md))
+- サーバーレス版: `import`ブロックと`terraform plan -generate-config-out`で取り込んだ
+
+どちらも全リソースがコードと一致(`terraform plan`でNo changes)することを確認済み。Stateはこのプロジェクト専用のS3バケットに保存している([ADR-0019](docs/adr/0019-terraform-state-backend.md))。
 ```bash
 cp infra/backend.hcl.example infra/backend.hcl   # 初回のみ。バケット名などを自分の値に書き換える
-cd infra/ecs
+cd infra/ecs          # サーバーレス版は infra/serverless
 terraform init -backend-config=../backend.hcl
 terraform plan
 ```
-RDS・タスク定義・ECSサービスは、普段は削除している(`ecs_enabled`の既定値はfalse)。使うときだけ`terraform apply -var ecs_enabled=true`で作成する([ADR-0029](docs/adr/0029-ecs-rds-on-demand.md))。
+ECS版のRDS・タスク定義・ECSサービスは、普段は削除している(`ecs_enabled`の既定値はfalse)。使うときだけ`terraform apply -var ecs_enabled=true`で作成する([ADR-0029](docs/adr/0029-ecs-rds-on-demand.md))。
 
 ## CI/CD(GitHub Actions)
 
-`main`ブランチへの変更を、GitHub Actionsから手動([`workflow_dispatch`](.github/workflows/deploy.yml))でECS Fargateへデプロイできる。認証は長期のアクセスキーを使わず、OIDC連携でIAM Roleを一時的に引き受ける方式([ADR-0025](docs/adr/0025-github-actions-oidc-auth.md))。
+`main`ブランチへの変更を、GitHub Actionsから手動([`workflow_dispatch`](.github/workflows/deploy.yml))でECS Fargateへデプロイできる。サーバーレス版も、別のワークフロー([`deploy-lambda.yml`](.github/workflows/deploy-lambda.yml))で同じようにデプロイする。違うのは、Dockerfileで`--target lambda`を指定してビルドすることと、最後に`aws lambda update-function-code`で関数のイメージを差し替えることだけ([ADR-0033](docs/adr/0033-serverless-deploy-and-packaging.md))。認証は長期のアクセスキーを使わず、OIDC連携でIAM Roleを一時的に引き受ける方式([ADR-0025](docs/adr/0025-github-actions-oidc-auth.md))。
 
 デプロイの流れ:
 1. Dockerイメージをビルドし、gitのコミットSHAをタグにしてECRへpush
@@ -86,7 +162,7 @@ RDS・タスク定義・ECSサービスは、普段は削除している(`ecs_en
 
 この一連の処理はTerraform管理外で行っており(`main.tf`のタスク定義には`lifecycle.ignore_changes`を設定)、Terraformは「インフラの骨格」、CI/CDは「アプリのリリース」という役割分担にしている([ADR-0027](docs/adr/0027-deploy-outside-terraform.md))。デプロイの発火はコストの都合(タスク数は基本0、[ADR-0020](docs/adr/0020-ecs-desired-count-default-zero.md))で自動化せず手動実行のみ([ADR-0026](docs/adr/0026-deploy-manual-trigger.md))。
 
-実行方法: GitHubの「Actions」タブ → 「Deploy todo-api」→ 「Run workflow」
+実行方法: GitHubの「Actions」タブ → 「Deploy todo-api」(ECS版)または「Deploy todo-api(lambda)」(サーバーレス版)→ 「Run workflow」
 
 ## 記録のルール
 - 各段階で、なぜその技術・構成を選んだかをADR(Architecture Decision Record)として [docs/adr/](docs/adr/) に残す
@@ -106,6 +182,8 @@ RDS・タスク定義・ECSサービスは、普段は削除している(`ecs_en
 `infra/`のTerraformコードを自分の環境で使う場合は、以下に注意してください。
 - stateを保存するS3バケットは、Terraform管理外のため事前に自分で作成し、`infra/backend.hcl`(`backend.hcl.example`をコピーして作る)にその名前を書く(バケット名は全世界で一意なので、そのままでは使えない)
 - このリポジトリ固有の値がハードコードされているため、次の箇所を書き換える必要があります
-  - `infra/ecs/main.tf`: GitHub ActionsのOIDC信頼ポリシーの`sub`条件(owner/repoの名前とID)
-  - `infra/ecs/provider.tf`: AWSプロファイル名(`dotnet-lab`)とリージョン(`ap-northeast-1`)
-- `terraform apply`を実行すると、そのAWSアカウントで課金が発生します(`ecs_enabled=true`にするとRDSが常時課金になる。ECSのタスク数は既定で0)
+  - `infra/ecs/main.tf`、`infra/serverless/main.tf`: GitHub ActionsのOIDC信頼ポリシーの`sub`条件(owner/repoの名前とID)
+  - `infra/ecs/provider.tf`、`infra/serverless/provider.tf`: AWSプロファイル名(`dotnet-lab`)とリージョン(`ap-northeast-1`)
+- サーバーレス版のGitHub Actions用ロールは、ECS版が作るOIDCプロバイダーを参照する。ECS版を先に`apply`する必要がある
+- サーバーレス版をTerraformだけで一から作る場合、Lambda関数を作る時点でECRにイメージが必要になる。先に`terraform apply -target=aws_ecr_repository.lambda`でECRだけを作り、`docker build --target lambda`でビルドしたイメージを`bootstrap_image_tag`のタグでpushしてから、全体を`apply`する
+- `terraform apply`を実行すると、そのAWSアカウントで課金が発生します(`ecs_enabled=true`にするとRDSが常時課金になる。ECSのタスク数は既定で0。サーバーレス版はリクエスト課金)
