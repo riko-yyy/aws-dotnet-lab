@@ -18,10 +18,27 @@ resource "aws_ecr_repository" "lambda" {
   name = "todo-api-lambda"
 }
 
+resource "aws_ecr_lifecycle_policy" "lambda" {
+  repository = aws_ecr_repository.lambda.name
+  # ストレージ代を抑えるため、最新の5個だけ残す
+  policy = jsonencode({
+    rules = [{
+      rulePriority = 1
+      description  = "keep last 5 images"
+      selection = {
+        tagStatus   = "any"
+        countType   = "imageCountMoreThan"
+        countNumber = 5
+      }
+      action = { type = "expire" }
+    }]
+  })
+}
+
 data "aws_iam_policy_document" "ecr_lambda_pull" {
   statement {
     effect  = "Allow"
-    actions = ["ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer", "ecr:SetRepositoryPolicy", "ecr:DeleteRepositoryPolicy", "ecr:GetRepositoryPolicy"]
+    actions = ["ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer"]
     principals {
       type        = "Service"
       identifiers = ["lambda.amazonaws.com"]
@@ -29,7 +46,7 @@ data "aws_iam_policy_document" "ecr_lambda_pull" {
     condition {
       test     = "StringLike"
       variable = "aws:sourceArn"
-      values   = ["arn:aws:lambda:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:function:*"]
+      values   = ["arn:aws:lambda:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:function:${local.name}"]
     }
     sid = "LambdaECRImageRetrievalPolicy"
   }
@@ -82,11 +99,6 @@ resource "aws_iam_role" "lambda" {
 }
 
 data "aws_iam_policy_document" "lambda_basic_execution" {
-  statement {
-    effect    = "Allow"
-    actions   = ["logs:CreateLogGroup"]
-    resources = ["arn:aws:logs:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:*"]
-  }
   statement {
     effect    = "Allow"
     actions   = ["logs:CreateLogStream", "logs:PutLogEvents"]
@@ -187,4 +199,77 @@ resource "aws_apigatewayv2_stage" "default" {
     throttling_burst_limit = 5
     throttling_rate_limit  = 1
   }
+}
+
+# ---------- GitHub Actions(デプロイ用ロール) ----------
+
+# OIDCプロバイダーはアカウントに1つだけで、ECS版のstateが管理している。ここでは参照するだけ(ADR-0039)
+data "aws_iam_openid_connect_provider" "github_actions" {
+  url = "https://token.actions.githubusercontent.com"
+}
+
+data "aws_iam_policy_document" "github_actions_role" {
+  statement {
+    effect  = "Allow"
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:sub"
+      values   = ["repo:riko-yyy@51203198/aws-dotnet-lab@1375461367:ref:refs/heads/main"]
+    }
+    principals {
+      type        = "Federated"
+      identifiers = [data.aws_iam_openid_connect_provider.github_actions.arn]
+    }
+  }
+}
+
+resource "aws_iam_role" "github_actions_deploy" {
+  name               = "todo-api-lambda-github-actions-deploy-role"
+  assume_role_policy = data.aws_iam_policy_document.github_actions_role.json
+}
+
+data "aws_iam_policy_document" "github_actions_deploy" {
+  statement {
+    effect    = "Allow"
+    actions   = ["ecr:GetAuthorizationToken"]
+    resources = ["*"]
+  }
+  statement {
+    effect    = "Allow"
+    actions   = ["ecr:BatchCheckLayerAvailability", "ecr:InitiateLayerUpload", "ecr:UploadLayerPart", "ecr:CompleteLayerUpload", "ecr:PutImage"]
+    resources = [aws_ecr_repository.lambda.arn]
+  }
+  statement {
+    effect    = "Allow"
+    actions   = ["lambda:UpdateFunctionCode", "lambda:GetFunction"]
+    resources = [aws_lambda_function.api.arn]
+  }
+}
+
+resource "aws_iam_role_policy" "github_actions_deploy" {
+  name   = "todo-api-lambda-github-actions-deploy"
+  role   = aws_iam_role.github_actions_deploy.id
+  policy = data.aws_iam_policy_document.github_actions_deploy.json
+}
+
+# ---------- 出力 ----------
+
+output "api_endpoint" {
+  description = "公開URL"
+  value       = aws_apigatewayv2_api.http.api_endpoint
+}
+
+output "ecr_repository_url" {
+  value = aws_ecr_repository.lambda.repository_url
+}
+
+output "github_actions_role_arn" {
+  description = "GitHub ActionsのワークフローでAssumeするロール"
+  value       = aws_iam_role.github_actions_deploy.arn
 }
