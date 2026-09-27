@@ -98,7 +98,7 @@ ECS版
 - [x] データアクセスのインターフェースへの切り出し([PR #15](https://github.com/riko-yyy/aws-dotnet-lab/pull/15))
 - [x] Lambdaへの載せ方と入口の判断([PR #16](https://github.com/riko-yyy/aws-dotnet-lab/pull/16))
 - [x] DynamoDB実装、Lambda対応、コンソールでの構築とTerraformへの取り込み、デプロイ([PR #17](https://github.com/riko-yyy/aws-dotnet-lab/pull/17))
-- [x] コールドスタートの計測と、ECS版との比較
+- [x] コールドスタートの計測と、ECS版との比較([PR #18](https://github.com/riko-yyy/aws-dotnet-lab/pull/18))
 
 ## ECS版とサーバーレス版の比較
 詳しくは[比較資料](docs/comparison.md)を参照。
